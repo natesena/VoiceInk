@@ -2,16 +2,27 @@ import Foundation
 import AppKit
 
 class CursorPaster {
+    private static let pasteCompletionDelay: TimeInterval = 0.3
     
     static func pasteAtCursor(_ text: String) {
+        print("🔍 DEBUG: pasteAtCursor called with text: '\(text.prefix(50))...'")
+        
+        guard AXIsProcessTrusted() else {
+            print("❌ DEBUG: AXIsProcessTrusted() returned false - accessibility permission denied")
+            return
+        }
+        print("✅ DEBUG: Accessibility permission confirmed")
+        
         let pasteboard = NSPasteboard.general
-        let preserveTranscript = UserDefaults.standard.bool(forKey: "preserveTranscriptInClipboard")
         
         var savedContents: [(NSPasteboard.PasteboardType, Data)] = []
+        
+        let preserveTranscript = UserDefaults.standard.bool(forKey: "preserveTranscriptInClipboard")
         
         // Only save clipboard contents if we plan to restore them
         if !preserveTranscript {
             let currentItems = pasteboard.pasteboardItems ?? []
+            print("🔍 DEBUG: Saving \(currentItems.count) clipboard items")
             
             for item in currentItems {
                 for type in item.types {
@@ -23,11 +34,17 @@ class CursorPaster {
         }
         
         pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        let clipboardSuccess = pasteboard.setString(text, forType: .string)
+        print("🔍 DEBUG: Clipboard set success: \(clipboardSuccess)")
         
-        if UserDefaults.standard.bool(forKey: "UseAppleScriptPaste") {
-            _ = pasteUsingAppleScript()
+        let useAppleScript = UserDefaults.standard.bool(forKey: "UseAppleScriptPaste")
+        print("🔍 DEBUG: Using AppleScript paste: \(useAppleScript)")
+        
+        if useAppleScript {
+            let appleScriptResult = pasteUsingAppleScript()
+            print("🔍 DEBUG: AppleScript paste result: \(appleScriptResult)")
         } else {
+            print("🔍 DEBUG: Using Command+V paste method")
             pasteUsingCommandV()
         }
         
@@ -39,16 +56,13 @@ class CursorPaster {
                     for (type, data) in savedContents {
                         pasteboard.setData(data, forType: type)
                     }
+                    print("✅ DEBUG: Clipboard restored")
                 }
             }
         }
     }
     
     private static func pasteUsingAppleScript() -> Bool {
-        guard AXIsProcessTrusted() else {
-            return false
-        }
-        
         let script = """
         tell application "System Events"
             keystroke "v" using command down
@@ -64,34 +78,29 @@ class CursorPaster {
     }
     
     private static func pasteUsingCommandV() {
-        guard AXIsProcessTrusted() else {
-            return
-        }
-        
+        print("🔍 DEBUG: Creating CGEvent source...")
         let source = CGEventSource(stateID: .hidSystemState)
         
+        print("🔍 DEBUG: Creating keyboard events...")
         let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x37, keyDown: true)
         let vDown = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true)
         let vUp = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false)
         let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x37, keyDown: false)
         
+        guard cmdDown != nil, vDown != nil, vUp != nil, cmdUp != nil else {
+            print("❌ DEBUG: Failed to create one or more CGEvents")
+            return
+        }
+        
         cmdDown?.flags = .maskCommand
         vDown?.flags = .maskCommand
         vUp?.flags = .maskCommand
         
+        print("🔍 DEBUG: Posting keyboard events...")
         cmdDown?.post(tap: .cghidEventTap)
         vDown?.post(tap: .cghidEventTap)
         vUp?.post(tap: .cghidEventTap)
         cmdUp?.post(tap: .cghidEventTap)
-    }
-
-    // Simulate pressing the Return / Enter key
-    static func pressEnter() {
-        guard AXIsProcessTrusted() else { return }
-        let source = CGEventSource(stateID: .hidSystemState)
-        let enterDown = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: true)
-        let enterUp = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: false)
-        enterDown?.post(tap: .cghidEventTap)
-        enterUp?.post(tap: .cghidEventTap)
+        print("✅ DEBUG: Command+V events posted")
     }
 }

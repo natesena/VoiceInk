@@ -33,20 +33,21 @@ struct MetricsView: View {
                     }
                 )
                 .padding()
-            } else if case .trialExpired = licenseViewModel.licenseState {
-                TrialMessageView(
-                    message: "Your trial has expired. Upgrade to continue using VoiceInk",
-                    type: .expired,
-                    onAddLicenseKey: {
-                        // Also allow navigation from expired state
-                        NotificationCenter.default.post(
-                            name: .navigateToDestination,
-                            object: nil,
-                            userInfo: ["destination": "VoiceInk Pro"]
-                        )
-                    }
-                )
-                .padding()
+            // Trial expired UI removed - trial never expires now
+            // } else if case .trialExpired = licenseViewModel.licenseState {
+            //     TrialMessageView(
+            //         message: "Your trial has expired. Upgrade to continue using VoiceInk",
+            //         type: .expired,
+            //         onAddLicenseKey: {
+            //             // Also allow navigation from expired state
+            //             NotificationCenter.default.post(
+            //                 name: .navigateToDestination,
+            //                 object: nil,
+            //                 userInfo: ["destination": "VoiceInk Pro"]
+            //             )
+            //         }
+            //     )
+            //     .padding()
             }
             
             Group {

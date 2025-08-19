@@ -345,19 +345,23 @@ class WhisperState: NSObject, ObservableObject {
                 NotificationCenter.default.post(name: .transcriptionCreated, object: newTranscription)
             }
             
-            if case .trialExpired = licenseViewModel.licenseState {
-                text = """
-                    Your trial has expired. Upgrade to VoiceInk Pro at tryvoiceink.com/buy
-                    \n\(text)
-                    """
-            }
+            // Trial expired message removed - trial never expires now
+            // if case .trialExpired = licenseViewModel.licenseState {
+            //     text = """
+            //         Your trial has expired. Upgrade to VoiceInk Pro at tryvoiceink.com/buy
+            //         \n\(text)
+            //         """
+            // }
 
             text += " "
 
             if await checkCancellationAndCleanup() { return }
 
+            print("🎯 DEBUG: Transcription completed! Text: '\(text.prefix(100))...'")
+            print("🎯 DEBUG: AXIsProcessTrusted(): \(AXIsProcessTrusted())")
+            
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                
+                print("🎯 DEBUG: Now calling pasteAtCursor...")
                 CursorPaster.pasteAtCursor(text)
 
                 let powerMode = PowerModeManager.shared

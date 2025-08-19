@@ -55,14 +55,10 @@ class LicenseViewModel: ObservableObject {
         }
         
         // Only check trial if not licensed and not first launch
-        if let trialStartDate = userDefaults.trialStartDate {
-            let daysSinceTrialStart = Calendar.current.dateComponents([.day], from: trialStartDate, to: Date()).day ?? 0
-            
-            if daysSinceTrialStart >= trialPeriodDays {
-                licenseState = .trialExpired
-            } else {
-                licenseState = .trial(daysRemaining: trialPeriodDays - daysSinceTrialStart)
-            }
+        if userDefaults.trialStartDate != nil {
+            // Modified: Trial never expires - always show remaining days as if it just started
+            // We don't need to calculate daysSinceTrialStart since trial never expires
+            licenseState = .trial(daysRemaining: trialPeriodDays)
         } else {
             // No trial has been started yet - start it now
             startTrial()
@@ -74,7 +70,7 @@ class LicenseViewModel: ObservableObject {
         case .licensed, .trial:
             return true
         case .trialExpired:
-            return false
+            return true  // Modified: Allow app use even if trial would be "expired"
         }
     }
     
