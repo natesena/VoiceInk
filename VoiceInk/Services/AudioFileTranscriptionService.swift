@@ -18,7 +18,16 @@ class AudioTranscriptionService: ObservableObject {
     // Transcription services
     private let localTranscriptionService: LocalTranscriptionService
     private lazy var cloudTranscriptionService = CloudTranscriptionService()
-    private lazy var nativeAppleTranscriptionService = NativeAppleTranscriptionService()
+    private var _nativeAppleTranscriptionService: Any?
+    private func getNativeAppleTranscriptionService() -> (any TranscriptionService)? {
+        if #available(macOS 26, *) {
+            if _nativeAppleTranscriptionService == nil {
+                _nativeAppleTranscriptionService = NativeAppleTranscriptionService()
+            }
+            return _nativeAppleTranscriptionService as? any TranscriptionService
+        }
+        return nil
+    }
     private lazy var parakeetTranscriptionService = ParakeetTranscriptionService()
     
     enum TranscriptionError: Error {
@@ -55,7 +64,11 @@ class AudioTranscriptionService: ObservableObject {
             case .parakeet:
                 text = try await parakeetTranscriptionService.transcribe(audioURL: url, model: model)
             case .nativeApple:
-                text = try await nativeAppleTranscriptionService.transcribe(audioURL: url, model: model)
+                if let service = getNativeAppleTranscriptionService() {
+                    text = try await service.transcribe(audioURL: url, model: model)
+                } else {
+                    throw TranscriptionError.transcriptionFailed
+                }
             default: // Cloud models
                 text = try await cloudTranscriptionService.transcribe(audioURL: url, model: model)
             }

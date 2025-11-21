@@ -71,7 +71,16 @@ class WhisperState: NSObject, ObservableObject {
     // Transcription Services
     private var localTranscriptionService: LocalTranscriptionService!
     private lazy var cloudTranscriptionService = CloudTranscriptionService()
-    private lazy var nativeAppleTranscriptionService = NativeAppleTranscriptionService()
+    private var _nativeAppleTranscriptionService: Any?
+    private func getNativeAppleTranscriptionService() -> (any TranscriptionService)? {
+        if #available(macOS 26, *) {
+            if _nativeAppleTranscriptionService == nil {
+                _nativeAppleTranscriptionService = NativeAppleTranscriptionService()
+            }
+            return _nativeAppleTranscriptionService as? any TranscriptionService
+        }
+        return nil
+    }
     internal lazy var parakeetTranscriptionService = ParakeetTranscriptionService()
     
     private var modelUrl: URL? {
@@ -299,7 +308,10 @@ class WhisperState: NSObject, ObservableObject {
             case .parakeet:
                 transcriptionService = parakeetTranscriptionService
             case .nativeApple:
-                transcriptionService = nativeAppleTranscriptionService
+                guard let service = getNativeAppleTranscriptionService() else {
+                    throw WhisperStateError.transcriptionFailed
+                }
+                transcriptionService = service
             default:
                 transcriptionService = cloudTranscriptionService
             }
