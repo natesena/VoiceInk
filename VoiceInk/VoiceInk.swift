@@ -206,8 +206,9 @@ struct VoiceInkApp: App {
                             NSApplication.shared.terminate(nil)
                             return
                         }
-                        
-                        updaterViewModel.silentlyCheckForUpdates()
+
+                        // Automatic update checks disabled - only manual checks allowed
+                        // updaterViewModel.silentlyCheckForUpdates()
                         if enableAnnouncements {
                             AnnouncementsService.shared.start()
                         }
@@ -304,11 +305,11 @@ class UpdaterViewModel: ObservableObject {
     
     init() {
         updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
-        
-        // Enable automatic update checking
-        updaterController.updater.automaticallyChecksForUpdates = autoUpdateCheck
+
+        // Disable automatic update checking - only allow manual checks
+        updaterController.updater.automaticallyChecksForUpdates = false
         updaterController.updater.updateCheckInterval = 24 * 60 * 60
-        
+
         updaterController.updater.publisher(for: \.canCheckForUpdates)
             .assign(to: &$canCheckForUpdates)
     }
