@@ -14,11 +14,36 @@ struct MenuBarView: View {
     
     var body: some View {
         VStack {
-            Button("Toggle Mini Recorder") {
-                Task {
-                    await whisperState.toggleMiniRecorder()
+            Menu {
+                ForEach(whisperState.usableModels, id: \.id) { model in
+                    Button {
+                        Task {
+                            await whisperState.setDefaultTranscriptionModel(model)
+                        }
+                    } label: {
+                        HStack {
+                            Text(model.displayName)
+                            if whisperState.currentTranscriptionModel?.id == model.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+                
+                Divider()
+                
+                Button("Manage Models") {
+                    menuBarManager.openMainWindowAndNavigate(to: "AI Models")
+                }
+            } label: {
+                HStack {
+                    Text("Transcription Model: \(whisperState.currentTranscriptionModel?.displayName ?? "None")")
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 10))
                 }
             }
+            
+            Divider()
             
             Toggle("AI Enhancement", isOn: $enhancementService.isEnhancementEnabled)
             
@@ -28,7 +53,7 @@ struct MenuBarView: View {
                         enhancementService.setActivePrompt(prompt)
                     } label: {
                         HStack {
-                            Image(systemName: prompt.icon.rawValue)
+                            Image(systemName: prompt.icon)
                                 .foregroundColor(.accentColor)
                             Text(prompt.title)
                             if enhancementService.selectedPromptId == prompt.id {
@@ -78,90 +103,99 @@ struct MenuBarView: View {
                         .font(.system(size: 10))
                 }
             }
+            .disabled(!enhancementService.isEnhancementEnabled)
             
             Menu {
-                ForEach(whisperState.usableModels, id: \.id) { model in
+                ForEach(aiService.availableModels, id: \.self) { model in
                     Button {
-                        Task {
-                            await whisperState.setDefaultTranscriptionModel(model)
-                        }
+                        aiService.selectModel(model)
                     } label: {
                         HStack {
-                            Text(model.displayName)
-                            if whisperState.currentTranscriptionModel?.id == model.id {
+                            Text(model)
+                            if aiService.currentModel == model {
                                 Image(systemName: "checkmark")
                             }
                         }
                     }
                 }
                 
+                if aiService.availableModels.isEmpty {
+                    Text("No models available")
+                        .foregroundColor(.secondary)
+                }
+                
                 Divider()
                 
-                Button("Manage Models") {
-                    menuBarManager.openMainWindowAndNavigate(to: "AI Models")
+                Button("Manage AI Models") {
+                    menuBarManager.openMainWindowAndNavigate(to: "Enhancement")
                 }
             } label: {
                 HStack {
-                    Text("Model: \(whisperState.currentTranscriptionModel?.displayName ?? "None")")
+                    Text("AI Model: \(aiService.currentModel)")
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 10))
                 }
             }
+            .disabled(!enhancementService.isEnhancementEnabled)
             
             LanguageSelectionView(whisperState: whisperState, displayMode: .menuItem, whisperPrompt: whisperState.whisperPrompt)
             
-            Toggle("Use Clipboard Context", isOn: $enhancementService.useClipboardContext)
-                .disabled(!enhancementService.isEnhancementEnabled)
-            
-            Toggle("Use Screen Context", isOn: $enhancementService.useScreenCaptureContext)
-                .disabled(!enhancementService.isEnhancementEnabled)
-            
             Menu("Additional") {
                 Button {
-                    SoundManager.shared.isEnabled.toggle()
+                    enhancementService.useClipboardContext.toggle()
                     menuRefreshTrigger.toggle()
                 } label: {
                     HStack {
-                        Text("Sound Feedback")
+                        Text("Clipboard Context")
                         Spacer()
-                        if SoundManager.shared.isEnabled {
+                        if enhancementService.useClipboardContext {
                             Image(systemName: "checkmark")
                         }
                     }
                 }
+                .disabled(!enhancementService.isEnhancementEnabled)
                 
                 Button {
-                    MediaController.shared.isSystemMuteEnabled.toggle()
+                    enhancementService.useScreenCaptureContext.toggle()
                     menuRefreshTrigger.toggle()
                 } label: {
                     HStack {
-                        Text("Mute System Audio During Recording")
+                        Text("Context Awareness")
                         Spacer()
-                        if MediaController.shared.isSystemMuteEnabled {
+                        if enhancementService.useScreenCaptureContext {
                             Image(systemName: "checkmark")
                         }
                     }
                 }
+                .disabled(!enhancementService.isEnhancementEnabled)
             }
             .id("additional-menu-\(menuRefreshTrigger)")
             
             Divider()
             
+            Button("Retry Last Transcription") {
+                LastTranscriptionService.retryLastTranscription(from: whisperState.modelContext, whisperState: whisperState)
+            }
+            
             Button("Copy Last Transcription") {
                 LastTranscriptionService.copyLastTranscription(from: whisperState.modelContext)
             }
+            .keyboardShortcut("c", modifiers: [.command, .shift])
             
             Button("History") {
                 menuBarManager.openMainWindowAndNavigate(to: "History")
             }
+            .keyboardShortcut("h", modifiers: [.command, .shift])
             
             Button("Settings") {
                 menuBarManager.openMainWindowAndNavigate(to: "Settings")
             }
+            .keyboardShortcut(",", modifiers: .command)
             
             Button(menuBarManager.isMenuBarOnly ? "Show Dock Icon" : "Hide Dock Icon") {
                 menuBarManager.toggleMenuBarOnly()
             }
+            .keyboardShortcut("d", modifiers: [.command, .shift])
             
             Toggle("Launch at Login", isOn: $launchAtLoginEnabled)
                 .onChange(of: launchAtLoginEnabled) { oldValue, newValue in

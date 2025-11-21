@@ -31,6 +31,10 @@ struct EnhancementPromptPopover: View {
                             isSelected: selectedPrompt?.id == prompt.id,
                             isDisabled: !enhancementService.isEnhancementEnabled,
                             action: {
+                                // If enhancement is disabled, enable it first
+                                if !enhancementService.isEnhancementEnabled {
+                                    enhancementService.isEnhancementEnabled = true
+                                }
                                 enhancementService.setActivePrompt(prompt)
                                 selectedPrompt = prompt
                             }
@@ -41,7 +45,7 @@ struct EnhancementPromptPopover: View {
             }
         }
         .frame(width: 200)
-        .frame(maxHeight: 300)
+        .frame(maxHeight: 340)
         .padding(.vertical, 8)
         .background(Color.black)
         .environment(\.colorScheme, .dark)
@@ -66,29 +70,29 @@ struct EnhancementPromptRow: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 // Use the icon from the prompt
-                Image(systemName: prompt.icon.rawValue)
+                Image(systemName: prompt.icon)
                     .font(.system(size: 14))
-                    .foregroundColor(isDisabled ? .white.opacity(0.2) : .white.opacity(0.7))
-                
+                    .foregroundColor(isDisabled ? .white.opacity(0.4) : .white.opacity(0.7))
+
                 Text(prompt.title)
-                    .foregroundColor(isDisabled ? .white.opacity(0.3) : .white.opacity(0.9))
+                    .foregroundColor(isDisabled ? .white.opacity(0.4) : .white.opacity(0.9))
                     .font(.system(size: 13))
                     .lineLimit(1)
-                
+
                 if isSelected {
                     Spacer()
                     Image(systemName: "checkmark")
-                        .foregroundColor(isDisabled ? .green.opacity(0.3) : .green)
+                        .foregroundColor(isDisabled ? .green.opacity(0.7) : .green)
                         .font(.system(size: 10))
                 }
             }
-            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
             .padding(.horizontal, 8)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .background(isSelected ? Color.white.opacity(0.1) : Color.clear)
         .cornerRadius(4)
-        .disabled(isDisabled)
     }
 } 

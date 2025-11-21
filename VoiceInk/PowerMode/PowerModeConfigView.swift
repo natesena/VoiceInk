@@ -41,6 +41,15 @@ struct ConfigurationView: View {
     // State for prompt editing (similar to EnhancementSettingsView)
     @State private var isEditingPrompt = false
     @State private var selectedPromptForEdit: CustomPrompt?
+
+    private func languageSelectionDisabled() -> Bool {
+        guard let selectedModelName = effectiveModelName,
+              let model = whisperState.allAvailableModels.first(where: { $0.name == selectedModelName })
+        else {
+            return false
+        }
+        return model.provider == .parakeet || model.provider == .gemini
+    }
     
     // Whisper state for model selection
     @EnvironmentObject private var whisperState: WhisperState
@@ -121,8 +130,21 @@ struct ConfigurationView: View {
                 
                 if case .edit(let config) = mode {
                     Button("Delete") {
-                        powerModeManager.removeConfiguration(with: config.id)
-                        presentationMode.wrappedValue.dismiss()
+                        let alert = NSAlert()
+                        alert.messageText = "Delete Power Mode?"
+                        alert.informativeText = "Are you sure you want to delete the '\(config.name)' power mode? This action cannot be undone."
+                        alert.alertStyle = .warning
+                        alert.addButton(withTitle: "Delete")
+                        alert.addButton(withTitle: "Cancel")
+                        
+                        // Style the Delete button as destructive
+                        alert.buttons[0].hasDestructiveAction = true
+                        
+                        let response = alert.runModal()
+                        if response == .alertFirstButtonReturn {
+                            powerModeManager.removeConfiguration(with: config.id)
+                            presentationMode.wrappedValue.dismiss()
+                        }
                     }
                     .foregroundColor(.red)
                     .padding(.trailing, 8)
@@ -173,18 +195,16 @@ struct ConfigurationView: View {
                         }
                         
                         // Default Power Mode Toggle
-                        if !powerModeManager.hasDefaultConfiguration() || isCurrentConfigDefault {
-                            HStack {
-                                Toggle("Set as default power mode", isOn: $isDefault)
-                                    .font(.system(size: 14))
-                                
-                                InfoTip(
-                                    title: "Default Power Mode",
-                                    message: "Default power mode is used when no specific app or website matches are found"
-                                )
-                                
-                                Spacer()
-                            }
+                        HStack {
+                            Toggle("Set as default power mode", isOn: $isDefault)
+                                .font(.system(size: 14))
+                            
+                            InfoTip(
+                                title: "Default Power Mode",
+                                message: "Default power mode is used when no specific app or website matches are found"
+                            )
+                            
+                            Spacer()
                         }
                     }
                     .padding(.horizontal, 20)
@@ -376,9 +396,21 @@ struct ConfigurationView: View {
                             }
                         }
                         
-                        if let selectedModel = effectiveModelName,
-                           let modelInfo = whisperState.allAvailableModels.first(where: { $0.name == selectedModel }),
-                           modelInfo.isMultilingualModel {
+                        if languageSelectionDisabled() {
+                            HStack {
+                                Text("Language")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                
+                                Text("Autodetected")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                
+                                Spacer()
+                            }
+                        } else if let selectedModel = effectiveModelName,
+                                  let modelInfo = whisperState.allAvailableModels.first(where: { $0.name == selectedModel }),
+                                  modelInfo.isMultilingualModel {
                             
                             let languageBinding = Binding<String?>(
                                 get: {
@@ -594,12 +626,22 @@ struct ConfigurationView: View {
                     .background(CardBackground(isSelected: false))
                     .padding(.horizontal)
                     
-                    VoiceInkButton(
-                        title: mode.isAdding ? "Add New Power Mode" : "Save Changes",
-                        action: saveConfiguration,
-                        isDisabled: !canSave
-                    )
-                    .frame(maxWidth: .infinity)
+                    HStack {
+                        Spacer()
+                        Button(action: saveConfiguration) {
+                            Text(mode.isAdding ? "Add New Power Mode" : "Save Changes")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(canSave ? Color(red: 0.3, green: 0.7, blue: 0.4) : Color(red: 0.3, green: 0.7, blue: 0.4).opacity(0.5))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!canSave)
+                    }
                     .padding(.horizontal)
                 }
                 .padding(.vertical)

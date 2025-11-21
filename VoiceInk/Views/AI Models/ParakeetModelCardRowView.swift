@@ -11,11 +11,11 @@ struct ParakeetModelCardRowView: View {
     }
 
     var isDownloaded: Bool {
-        whisperState.isParakeetModelDownloaded
+        whisperState.isParakeetModelDownloaded(model)
     }
 
     var isDownloading: Bool {
-        whisperState.isDownloadingParakeet
+        whisperState.isParakeetModelDownloading(model)
     }
 
     var body: some View {
@@ -104,7 +104,8 @@ struct ParakeetModelCardRowView: View {
     private var progressSection: some View {
         Group {
             if isDownloading {
-                ProgressView() // Indeterminate for now
+                let progress = whisperState.downloadProgress[model.name] ?? 0.0
+                ProgressView(value: progress)
                     .progressViewStyle(LinearProgressViewStyle())
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 8)
@@ -132,7 +133,7 @@ struct ParakeetModelCardRowView: View {
             } else {
                 Button(action: {
                     Task {
-                        await whisperState.downloadParakeetModel()
+                        await whisperState.downloadParakeetModel(model)
                     }
                 }) {
                     HStack(spacing: 4) {
@@ -152,13 +153,13 @@ struct ParakeetModelCardRowView: View {
             if isDownloaded {
                 Menu {
                     Button(action: {
-                         whisperState.deleteParakeetModel()
+                         whisperState.deleteParakeetModel(model)
                     }) {
                         Label("Delete Model", systemImage: "trash")
                     }
                     
                     Button {
-                        whisperState.showParakeetModelInFinder()
+                        whisperState.showParakeetModelInFinder(model)
                     } label: {
                         Label("Show in Finder", systemImage: "folder")
                     }

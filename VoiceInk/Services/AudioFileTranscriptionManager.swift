@@ -72,7 +72,7 @@ class AudioTranscriptionManager: ObservableObject {
                 
                 // Initialize parakeet transcription service if needed
                 if parakeetTranscriptionService == nil {
-                    parakeetTranscriptionService = ParakeetTranscriptionService(customModelsDirectory: whisperState.parakeetModelsDirectory)
+                    parakeetTranscriptionService = ParakeetTranscriptionService()
                 }
                 
                 // Process audio file
@@ -111,12 +111,19 @@ class AudioTranscriptionManager: ObservableObject {
                 }
                 
                 let transcriptionDuration = Date().timeIntervalSince(transcriptionStart)
+                text = TranscriptionOutputFilter.filter(text)
                 text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                
-                // Apply word replacements if enabled
-                if UserDefaults.standard.bool(forKey: "IsWordReplacementEnabled") {
-                    text = WordReplacementService.shared.applyReplacements(to: text)
+
+                let powerModeManager = PowerModeManager.shared
+                let activePowerModeConfig = powerModeManager.currentActiveConfiguration
+                let powerModeName = (activePowerModeConfig?.isEnabled == true) ? activePowerModeConfig?.name : nil
+                let powerModeEmoji = (activePowerModeConfig?.isEnabled == true) ? activePowerModeConfig?.emoji : nil
+
+                if UserDefaults.standard.object(forKey: "IsTextFormattingEnabled") as? Bool ?? true {
+                    text = WhisperTextFormatter.format(text)
                 }
+
+                text = WordReplacementService.shared.applyReplacements(to: text)
                 
                 // Handle enhancement if enabled
                 if let enhancementService = whisperState.enhancementService,
@@ -124,7 +131,8 @@ class AudioTranscriptionManager: ObservableObject {
                    enhancementService.isConfigured {
                     processingPhase = .enhancing
                     do {
-                        let (enhancedText, enhancementDuration) = try await enhancementService.enhance(text)
+                        // inside the enhancement success path where transcription is created
+                        let (enhancedText, enhancementDuration, promptName) = try await enhancementService.enhance(text)
                         let transcription = Transcription(
                             text: text,
                             duration: duration,
@@ -132,8 +140,13 @@ class AudioTranscriptionManager: ObservableObject {
                             audioFileURL: permanentURL.absoluteString,
                             transcriptionModelName: currentModel.displayName,
                             aiEnhancementModelName: enhancementService.getAIService()?.currentModel,
+                            promptName: promptName,
                             transcriptionDuration: transcriptionDuration,
-                            enhancementDuration: enhancementDuration
+                            enhancementDuration: enhancementDuration,
+                            aiRequestSystemMessage: enhancementService.lastSystemMessageSent,
+                            aiRequestUserMessage: enhancementService.lastUserMessageSent,
+                            powerModeName: powerModeName,
+                            powerModeEmoji: powerModeEmoji
                         )
                         modelContext.insert(transcription)
                         try modelContext.save()
@@ -146,7 +159,10 @@ class AudioTranscriptionManager: ObservableObject {
                             duration: duration,
                             audioFileURL: permanentURL.absoluteString,
                             transcriptionModelName: currentModel.displayName,
-                            transcriptionDuration: transcriptionDuration
+                            promptName: nil,
+                            transcriptionDuration: transcriptionDuration,
+                            powerModeName: powerModeName,
+                            powerModeEmoji: powerModeEmoji
                         )
                         modelContext.insert(transcription)
                         try modelContext.save()
@@ -159,7 +175,10 @@ class AudioTranscriptionManager: ObservableObject {
                         duration: duration,
                         audioFileURL: permanentURL.absoluteString,
                         transcriptionModelName: currentModel.displayName,
-                        transcriptionDuration: transcriptionDuration
+                        promptName: nil,
+                        transcriptionDuration: transcriptionDuration,
+                        powerModeName: powerModeName,
+                        powerModeEmoji: powerModeEmoji
                     )
                     modelContext.insert(transcription)
                     try modelContext.save()
@@ -208,4 +227,4 @@ enum TranscriptionError: Error, LocalizedError {
             return "Transcription was cancelled"
         }
     }
-} 
+}

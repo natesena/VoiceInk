@@ -12,13 +12,11 @@ extension WhisperState {
         if recorderType == "notch" {
             if notchWindowManager == nil {
                 notchWindowManager = NotchWindowManager(whisperState: self, recorder: recorder)
-                logger.info("Created new notch window manager")
             }
             notchWindowManager?.show()
         } else {
             if miniWindowManager == nil {
                 miniWindowManager = MiniWindowManager(whisperState: self, recorder: recorder)
-                logger.info("Created new mini window manager")
             }
             miniWindowManager?.show()
         }
@@ -54,11 +52,9 @@ extension WhisperState {
     
     func dismissMiniRecorder() async {
         if recordingState == .busy { return }
-        
+
         let wasRecording = recordingState == .recording
-        
-        logger.notice("📱 Dismissing \(self.recorderType) recorder")
-        
+ 
         await MainActor.run {
             self.recordingState = .busy
         }
@@ -69,15 +65,42 @@ extension WhisperState {
         
         hideRecorderPanel()
         
+        // Clear captured context when the recorder is dismissed
+        if let enhancementService = enhancementService {
+            await MainActor.run {
+                enhancementService.clearCapturedContexts()
+            }
+        }
+        
         await MainActor.run {
             isMiniRecorderVisible = false
         }
         
         await cleanupModelResources()
         
+        if UserDefaults.standard.bool(forKey: PowerModeDefaults.autoRestoreKey) {
+            await PowerModeSessionManager.shared.endSession()
+            await MainActor.run {
+                PowerModeManager.shared.setActiveConfiguration(nil)
+            }
+        }
+        
         await MainActor.run {
             recordingState = .idle
         }
+    }
+    
+    func resetOnLaunch() async {
+        logger.notice("🔄 Resetting recording state on launch")
+        await recorder.stopRecording()
+        hideRecorderPanel()
+        await MainActor.run {
+            isMiniRecorderVisible = false
+            shouldCancelRecording = false
+            miniRecorderError = nil
+            recordingState = .idle
+        }
+        await cleanupModelResources()
     }
     
     func cancelRecording() async {
@@ -90,6 +113,7 @@ extension WhisperState {
     
     func setupNotifications() {
         NotificationCenter.default.addObserver(self, selector: #selector(handleToggleMiniRecorder), name: .toggleMiniRecorder, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleDismissMiniRecorder), name: .dismissMiniRecorder, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handleLicenseStatusChanged), name: .licenseStatusChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handlePromptChange), name: .promptDidChange, object: nil)
     }
@@ -97,6 +121,12 @@ extension WhisperState {
     @objc public func handleToggleMiniRecorder() {
         Task {
             await toggleMiniRecorder()
+        }
+    }
+    
+    @objc public func handleDismissMiniRecorder() {
+        Task {
+            await dismissMiniRecorder()
         }
     }
     

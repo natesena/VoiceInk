@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 enum AIProvider: String, CaseIterable {
     case cerebras = "Cerebras"
@@ -11,6 +10,7 @@ enum AIProvider: String, CaseIterable {
     case mistral = "Mistral"
     case elevenLabs = "ElevenLabs"
     case deepgram = "Deepgram"
+    case soniox = "Soniox"
     case ollama = "Ollama"
     case custom = "Custom"
     
@@ -35,6 +35,8 @@ enum AIProvider: String, CaseIterable {
             return "https://api.elevenlabs.io/v1/speech-to-text"
         case .deepgram:
             return "https://api.deepgram.com/v1/listen"
+        case .soniox:
+            return "https://api.soniox.com/v1"
         case .ollama:
             return UserDefaults.standard.string(forKey: "ollamaBaseURL") ?? "http://localhost:11434"
         case .custom:
@@ -49,9 +51,9 @@ enum AIProvider: String, CaseIterable {
         case .groq:
             return "qwen/qwen3-32b"
         case .gemini:
-            return "gemini-2.0-flash-lite"
+            return "gemini-2.5-flash-lite"
         case .anthropic:
-            return "claude-sonnet-4-0"
+            return "claude-haiku-4-5"
         case .openAI:
             return "gpt-5-mini"
         case .mistral:
@@ -60,6 +62,8 @@ enum AIProvider: String, CaseIterable {
             return "scribe_v1"
         case .deepgram:
             return "whisper-1"
+        case .soniox:
+            return "stt-async-v3"
         case .ollama:
             return UserDefaults.standard.string(forKey: "ollamaSelectedModel") ?? "mistral"
         case .custom:
@@ -81,27 +85,27 @@ enum AIProvider: String, CaseIterable {
             ]
         case .groq:
             return [
+                "llama-3.1-8b-instant",
                 "llama-3.3-70b-versatile",
-                "moonshotai/kimi-k2-instruct",
+                "moonshotai/kimi-k2-instruct-0905",
                 "qwen/qwen3-32b",
                 "meta-llama/llama-4-maverick-17b-128e-instruct",
-                "openai/gpt-oss-120b"
+                "openai/gpt-oss-120b",
+                "openai/gpt-oss-20b"
             ]
         case .gemini:
             return [
                 "gemini-2.5-pro",
                 "gemini-2.5-flash",
                 "gemini-2.5-flash-lite",
-                "gemini-2.0-flash",
-                "gemini-2.0-flash-lite"
+                "gemini-2.0-flash-001"
             ]
         case .anthropic:
             return [
                 "claude-opus-4-0",
                 "claude-sonnet-4-0",
-                "claude-3-7-sonnet-latest",
-                "claude-3-5-haiku-latest",
-                "claude-3-5-sonnet-latest"
+                "claude-sonnet-4-5",
+                "claude-haiku-4-5"
             ]
         case .openAI:
             return [
@@ -114,6 +118,7 @@ enum AIProvider: String, CaseIterable {
         case .mistral:
             return [
                 "mistral-large-latest",
+                "mistral-medium-latest",
                 "mistral-small-latest",
                 "mistral-saba-latest"
             ]
@@ -121,6 +126,8 @@ enum AIProvider: String, CaseIterable {
             return ["scribe_v1", "scribe_v1_experimental"]
         case .deepgram:
             return ["whisper-1"]
+        case .soniox:
+            return ["stt-async-v3"]
         case .ollama:
             return []
         case .custom:
@@ -141,8 +148,6 @@ enum AIProvider: String, CaseIterable {
 }
 
 class AIService: ObservableObject {
-    private let logger = Logger(subsystem: "com.prakashjoshipax.voiceink", category: "AIService")
-    
     @Published var apiKey: String = ""
     @Published var isAPIKeyValid: Bool = false
     @Published var customBaseURL: String = UserDefaults.standard.string(forKey: "customProviderBaseURL") ?? "" {
@@ -270,13 +275,13 @@ class AIService: ObservableObject {
         NotificationCenter.default.post(name: .AppSettingsDidChange, object: nil)
     }
     
-    func saveAPIKey(_ key: String, completion: @escaping (Bool) -> Void) {
+    func saveAPIKey(_ key: String, completion: @escaping (Bool, String?) -> Void) {
         guard selectedProvider.requiresAPIKey else {
-            completion(true)
+            completion(true, nil)
             return
         }
         
-        verifyAPIKey(key) { [weak self] isValid in
+        verifyAPIKey(key) { [weak self] isValid, errorMessage in
             guard let self = self else { return }
             DispatchQueue.main.async {
                 if isValid {
@@ -287,14 +292,14 @@ class AIService: ObservableObject {
                 } else {
                     self.isAPIKeyValid = false
                 }
-                completion(isValid)
+                completion(isValid, errorMessage)
             }
         }
     }
     
-    func verifyAPIKey(_ key: String, completion: @escaping (Bool) -> Void) {
+    func verifyAPIKey(_ key: String, completion: @escaping (Bool, String?) -> Void) {
         guard selectedProvider.requiresAPIKey else {
-            completion(true)
+            completion(true, nil)
             return
         }
         
@@ -307,12 +312,14 @@ class AIService: ObservableObject {
             verifyDeepgramAPIKey(key, completion: completion)
         case .mistral:
             verifyMistralAPIKey(key, completion: completion)
+        case .soniox:
+            verifySonioxAPIKey(key, completion: completion)
         default:
             verifyOpenAICompatibleAPIKey(key, completion: completion)
         }
     }
     
-    private func verifyOpenAICompatibleAPIKey(_ key: String, completion: @escaping (Bool) -> Void) {
+    private func verifyOpenAICompatibleAPIKey(_ key: String, completion: @escaping (Bool, String?) -> Void) {
         let url = URL(string: selectedProvider.baseURL)!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -328,12 +335,9 @@ class AIService: ObservableObject {
         
         request.httpBody = try? JSONSerialization.data(withJSONObject: testBody)
         
-        logger.notice("🔑 Verifying API key for \(self.selectedProvider.rawValue, privacy: .public) provider at \(url.absoluteString, privacy: .public)")
-        
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                self.logger.notice("🔑 API key verification failed for \(self.selectedProvider.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                completion(false)
+                completion(false, error.localizedDescription)
                 return
             }
             
@@ -341,23 +345,21 @@ class AIService: ObservableObject {
                 let isValid = httpResponse.statusCode == 200
                 
                 if !isValid {
-                    // Log the exact API error response
-                    if let data = data, let exactAPIError = String(data: data, encoding: .utf8) {
-                        self.logger.notice("🔑 API key verification failed for \(self.selectedProvider.rawValue, privacy: .public) - Status: \(httpResponse.statusCode) - \(exactAPIError, privacy: .public)")
+                    if let data = data, let responseString = String(data: data, encoding: .utf8) {
+                        completion(false, responseString)
                     } else {
-                        self.logger.notice("🔑 API key verification failed for \(self.selectedProvider.rawValue, privacy: .public) - Status: \(httpResponse.statusCode)")
+                        completion(false, nil)
                     }
+                } else {
+                    completion(true, nil)
                 }
-                
-                completion(isValid)
             } else {
-                self.logger.notice("🔑 API key verification failed for \(self.selectedProvider.rawValue, privacy: .public): Invalid response")
-                completion(false)
+                completion(false, nil)
             }
         }.resume()
     }
     
-    private func verifyAnthropicAPIKey(_ key: String, completion: @escaping (Bool) -> Void) {
+    private func verifyAnthropicAPIKey(_ key: String, completion: @escaping (Bool, String?) -> Void) {
         let url = URL(string: selectedProvider.baseURL)!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -378,19 +380,27 @@ class AIService: ObservableObject {
         
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                completion(false)
+                completion(false, error.localizedDescription)
                 return
             }
             
             if let httpResponse = response as? HTTPURLResponse {
-                completion(httpResponse.statusCode == 200)
+                if httpResponse.statusCode == 200 {
+                    completion(true, nil)
+                } else {
+                    if let data = data, let responseString = String(data: data, encoding: .utf8) {
+                        completion(false, responseString)
+                    } else {
+                        completion(false, nil)
+                    }
+                }
             } else {
-                completion(false)
+                completion(false, nil)
             }
         }.resume()
     }
     
-    private func verifyElevenLabsAPIKey(_ key: String, completion: @escaping (Bool) -> Void) {
+    private func verifyElevenLabsAPIKey(_ key: String, completion: @escaping (Bool, String?) -> Void) {
         let url = URL(string: "https://api.elevenlabs.io/v1/user")!
 
         var request = URLRequest(url: url)
@@ -402,14 +412,17 @@ class AIService: ObservableObject {
             let isValid = (response as? HTTPURLResponse)?.statusCode == 200
 
             if let data = data, let body = String(data: data, encoding: .utf8) {
-                self.logger.info("ElevenLabs verification response: \(body)")
+                if !isValid {
+                    completion(false, body)
+                    return
+                }
             }
 
-            completion(isValid)
+            completion(isValid, nil)
         }.resume()
     }
     
-    private func verifyMistralAPIKey(_ key: String, completion: @escaping (Bool) -> Void) {
+    private func verifyMistralAPIKey(_ key: String, completion: @escaping (Bool, String?) -> Void) {
         let url = URL(string: "https://api.mistral.ai/v1/models")!
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -417,30 +430,27 @@ class AIService: ObservableObject {
         
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                self.logger.error("Mistral API key verification failed: \(error.localizedDescription)")
-                completion(false)
+                completion(false, error.localizedDescription)
                 return
             }
             
             if let httpResponse = response as? HTTPURLResponse {
                 if httpResponse.statusCode == 200 {
-                    completion(true)
+                    completion(true, nil)
                 } else {
                     if let data = data, let body = String(data: data, encoding: .utf8) {
-                        self.logger.error("Mistral API key verification failed with status code \(httpResponse.statusCode): \(body)")
+                        completion(false, body)
                     } else {
-                        self.logger.error("Mistral API key verification failed with status code \(httpResponse.statusCode) and no response body.")
+                        completion(false, nil)
                     }
-                    completion(false)
                 }
             } else {
-                self.logger.error("Mistral API key verification failed: Invalid response from server.")
-                completion(false)
+                completion(false, nil)
             }
         }.resume()
     }
 
-    private func verifyDeepgramAPIKey(_ key: String, completion: @escaping (Bool) -> Void) {
+    private func verifyDeepgramAPIKey(_ key: String, completion: @escaping (Bool, String?) -> Void) {
         let url = URL(string: "https://api.deepgram.com/v1/auth/token")!
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -448,15 +458,54 @@ class AIService: ObservableObject {
         
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                self.logger.error("Deepgram API key verification failed: \(error.localizedDescription)")
-                completion(false)
+                completion(false, error.localizedDescription)
                 return
             }
             
             if let httpResponse = response as? HTTPURLResponse {
-                completion(httpResponse.statusCode == 200)
+                if httpResponse.statusCode == 200 {
+                    completion(true, nil)
+                } else {
+                    if let data = data, let responseString = String(data: data, encoding: .utf8) {
+                        completion(false, responseString)
+                    } else {
+                        completion(false, nil)
+                    }
+                }
             } else {
-                completion(false)
+                completion(false, nil)
+            }
+        }.resume()
+    }
+    
+    private func verifySonioxAPIKey(_ key: String, completion: @escaping (Bool, String?) -> Void) {
+        guard let url = URL(string: "https://api.soniox.com/v1/files") else {
+            completion(false, nil)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(false, error.localizedDescription)
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                if httpResponse.statusCode == 200 {
+                    completion(true, nil)
+                } else {
+                    if let data = data, let responseString = String(data: data, encoding: .utf8) {
+                        completion(false, responseString)
+                    } else {
+                        completion(false, nil)
+                    }
+                }
+            } else {
+                completion(false, nil)
             }
         }.resume()
     }
@@ -486,13 +535,10 @@ class AIService: ObservableObject {
     }
     
     func enhanceWithOllama(text: String, systemPrompt: String) async throws -> String {
-        logger.notice("🔄 Sending transcription to Ollama for enhancement (model: \(self.ollamaService.selectedModel))")
         do {
             let result = try await ollamaService.enhance(text, withSystemPrompt: systemPrompt)
-            logger.notice("✅ Ollama enhancement completed successfully (\(result.count) characters)")
             return result
         } catch {
-            logger.notice("❌ Ollama enhancement failed: \(error.localizedDescription)")
             throw error
         }
     }
@@ -517,7 +563,6 @@ class AIService: ObservableObject {
             let (data, response) = try await URLSession.shared.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                logger.error("Failed to fetch OpenRouter models: Invalid HTTP response")
                 await MainActor.run { 
                     self.openRouterModels = []
                     self.saveOpenRouterModels()
@@ -528,7 +573,6 @@ class AIService: ObservableObject {
             
             guard let jsonResponse = try? JSONSerialization.jsonObject(with: data) as? [String: Any], 
                   let dataArray = jsonResponse["data"] as? [[String: Any]] else {
-                logger.error("Failed to parse OpenRouter models JSON")
                 await MainActor.run { 
                     self.openRouterModels = []
                     self.saveOpenRouterModels()
@@ -546,10 +590,8 @@ class AIService: ObservableObject {
                 }
                 self.objectWillChange.send()
             }
-            logger.info("Successfully fetched \(models.count) OpenRouter models.")
             
         } catch {
-            logger.error("Error fetching OpenRouter models: \(error.localizedDescription)")
             await MainActor.run { 
                 self.openRouterModels = []
                 self.saveOpenRouterModels()

@@ -63,18 +63,6 @@ struct PowerModeConfigurationsGrid: View {
                     powerModeManager: powerModeManager,
                     onEditConfig: onEditConfig
                 )
-                .contextMenu {
-                    Button(action: { 
-                        onEditConfig(config)
-                    }) {
-                        Label("Edit", systemImage: "pencil")
-                    }
-                    Button(role: .destructive, action: {
-                        powerModeManager.removeConfiguration(with: config.id)
-                    }) {
-                        Label("Remove", systemImage: "trash")
-                    }
-                }
             }
         }
         .padding(.horizontal)
@@ -203,7 +191,7 @@ struct ConfigurationRow: View {
             .padding(.vertical, 12)
             .padding(.horizontal, 14)
             
-            if selectedModel != nil || selectedLanguage != nil || config.isAIEnhancementEnabled {
+            if selectedModel != nil || selectedLanguage != nil || config.isAIEnhancementEnabled || config.isAutoSendEnabled {
                 Divider()
                     .padding(.horizontal, 16)
                 
@@ -259,6 +247,22 @@ struct ConfigurationRow: View {
                         )
                     }
                     
+                    if config.isAutoSendEnabled {
+                        HStack(spacing: 4) {
+                            Image(systemName: "keyboard")
+                                .font(.system(size: 10))
+                            Text("Auto Send")
+                                .font(.caption)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule()
+                            .fill(Color(NSColor.controlBackgroundColor)))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
+                        )
+                    }
                     if config.isAIEnhancementEnabled {
                         if config.useScreenCapture {
                             HStack(spacing: 4) {
@@ -289,7 +293,7 @@ struct ConfigurationRow: View {
                             .fill(Color.accentColor.opacity(0.1)))
                         .foregroundColor(.accentColor)
                     }
-                    
+
                     Spacer()
                 }
                 .padding(.vertical, 10)
@@ -314,9 +318,19 @@ struct ConfigurationRow: View {
             Label("Edit", systemImage: "pencil")
         }
         Button(role: .destructive, action: {
-            powerModeManager.removeConfiguration(with: config.id)
+            let alert = NSAlert()
+            alert.messageText = "Delete Power Mode?"
+            alert.informativeText = "Are you sure you want to delete the '\(config.name)' power mode? This action cannot be undone."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Delete")
+            alert.addButton(withTitle: "Cancel")
+            alert.buttons[0].hasDestructiveAction = true
+            
+            if alert.runModal() == .alertFirstButtonReturn {
+                powerModeManager.removeConfiguration(with: config.id)
+            }
         }) {
-            Label("Remove", systemImage: "trash")
+            Label("Delete", systemImage: "trash")
         }
     }
     }
@@ -376,4 +390,4 @@ struct AppGridItem: View {
         }
         .buttonStyle(.plain)
     }
-} 
+}

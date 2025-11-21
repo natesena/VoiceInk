@@ -10,7 +10,7 @@ class ActiveWindowService: ObservableObject {
     private var whisperState: WhisperState?
     
     private let logger = Logger(
-        subsystem: "com.prakashjoshipax.VoiceInk",
+        subsystem: "com.prakashjoshipax.voiceink",
         category: "browser.detection"
     )
     
@@ -60,7 +60,8 @@ class ActiveWindowService: ObservableObject {
                 PowerModeManager.shared.setActiveConfiguration(config)
             }
             await PowerModeSessionManager.shared.beginSession(with: config)
+        } else {
+            // If no config found, keep the current active configuration (don't clear it)
         }
-        // If no config found, keep the current active configuration (don't clear it)
     }
 } 

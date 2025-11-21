@@ -36,21 +36,26 @@ class CursorPaster {
         pasteboard.clearContents()
         let clipboardSuccess = pasteboard.setString(text, forType: .string)
         print("🔍 DEBUG: Clipboard set success: \(clipboardSuccess)")
-        
+
+        if !preserveTranscript {
+            pasteboard.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+        }
+
         let useAppleScript = UserDefaults.standard.bool(forKey: "UseAppleScriptPaste")
         print("🔍 DEBUG: Using AppleScript paste: \(useAppleScript)")
-        
-        if useAppleScript {
-            let appleScriptResult = pasteUsingAppleScript()
-            print("🔍 DEBUG: AppleScript paste result: \(appleScriptResult)")
-        } else {
-            print("🔍 DEBUG: Using Command+V paste method")
-            pasteUsingCommandV()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            if UserDefaults.standard.bool(forKey: "UseAppleScriptPaste") {
+                let appleScriptResult = pasteUsingAppleScript()
+                print("🔍 DEBUG: AppleScript paste result: \(appleScriptResult)")
+            } else {
+                print("🔍 DEBUG: Using Command+V paste method")
+                pasteUsingCommandV()
+            }
         }
-        
-        // Only restore clipboard if preserve setting is disabled
+
         if !preserveTranscript {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
                 if !savedContents.isEmpty {
                     pasteboard.clearContents()
                     for (type, data) in savedContents {

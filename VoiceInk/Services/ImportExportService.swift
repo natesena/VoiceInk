@@ -7,6 +7,7 @@ import LaunchAtLogin
 struct GeneralSettings: Codable {
     let toggleMiniRecorderShortcut: KeyboardShortcuts.Shortcut?
     let toggleMiniRecorderShortcut2: KeyboardShortcuts.Shortcut?
+    let retryLastTranscriptionShortcut: KeyboardShortcuts.Shortcut?
     let selectedHotkey1RawValue: String?
     let selectedHotkey2RawValue: String?
     let launchAtLoginEnabled: Bool?
@@ -39,7 +40,7 @@ struct VoiceInkExportedSettings: Codable {
 class ImportExportService {
     static let shared = ImportExportService()
     private let currentSettingsVersion: String
-    private let dictionaryItemsKey = "CustomDictionaryItems"
+    private let dictionaryItemsKey = "CustomVocabularyItems"
     private let wordReplacementsKey = "wordReplacements"
 
 
@@ -86,6 +87,7 @@ class ImportExportService {
         let generalSettingsToExport = GeneralSettings(
             toggleMiniRecorderShortcut: KeyboardShortcuts.getShortcut(for: .toggleMiniRecorder),
             toggleMiniRecorderShortcut2: KeyboardShortcuts.getShortcut(for: .toggleMiniRecorder2),
+            retryLastTranscriptionShortcut: KeyboardShortcuts.getShortcut(for: .retryLastTranscription),
             selectedHotkey1RawValue: hotkeyManager.selectedHotkey1.rawValue,
             selectedHotkey2RawValue: hotkeyManager.selectedHotkey2.rawValue,
             launchAtLoginEnabled: LaunchAtLogin.isEnabled,
@@ -198,11 +200,11 @@ class ImportExportService {
                     }
 
                     if let itemsToImport = importedSettings.dictionaryItems {
-                        Task {
-                            await whisperPrompt.saveDictionaryItems(itemsToImport)
+                        if let encoded = try? JSONEncoder().encode(itemsToImport) {
+                            UserDefaults.standard.set(encoded, forKey: "CustomVocabularyItems")
                         }
                     } else {
-                        print("No dictionary items (for spelling) found in the imported file. Existing items remain unchanged.")
+                        print("No custom vocabulary items (for spelling) found in the imported file. Existing items remain unchanged.")
                     }
 
                     if let replacementsToImport = importedSettings.wordReplacements {
@@ -217,6 +219,9 @@ class ImportExportService {
                         }
                         if let shortcut2 = general.toggleMiniRecorderShortcut2 {
                             KeyboardShortcuts.setShortcut(shortcut2, for: .toggleMiniRecorder2)
+                        }
+                        if let retryShortcut = general.retryLastTranscriptionShortcut {
+                            KeyboardShortcuts.setShortcut(retryShortcut, for: .retryLastTranscription)
                         }
                         if let hotkeyRaw = general.selectedHotkey1RawValue,
                            let hotkey = HotkeyManager.HotkeyOption(rawValue: hotkeyRaw) {

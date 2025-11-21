@@ -19,18 +19,20 @@ enum PredefinedPrompts {
                 id: defaultPromptId,
                 title: "Default",
                 promptText: PromptTemplates.all.first { $0.title == "System Default" }?.promptText ?? "",
-                icon: .sealedFill,
+                icon: "checkmark.seal.fill",
                 description: "Default mode to improved clarity and accuracy of the transcription",
-                isPredefined: true
+                isPredefined: true,
+                useSystemInstructions: true
             ),
             
             CustomPrompt(
                 id: assistantPromptId,
                 title: "Assistant",
                 promptText: AIPrompts.assistantMode,
-                icon: .chatFill,
+                icon: "bubble.left.and.bubble.right.fill",
                 description: "AI assistant that provides direct answers to queries",
-                isPredefined: true
+                isPredefined: true,
+                useSystemInstructions: false
             )
         ]
     }

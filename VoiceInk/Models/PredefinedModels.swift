@@ -87,16 +87,26 @@ import Foundation
             supportedLanguages: getLanguageDictionary(isMultilingual: true, provider: .nativeApple)
         ),
         
-        // Parakeet Model
+        // Parakeet Models
         ParakeetModel(
-            name: "parakeet-tdt-0.6b",
-            displayName: "Parakeet",
-            description: "NVIDIA's ASR model for lightning-fast english transcription.",
-            size: "600 MB",
+            name: "parakeet-tdt-0.6b-v2",
+            displayName: "Parakeet V2",
+            description: "NVIDIA's Parakeet V2 model optimized for lightning-fast English-only transcription.",
+            size: "474 MB",
             speed: 0.99,
             accuracy: 0.94,
             ramUsage: 0.8,
             supportedLanguages: getLanguageDictionary(isMultilingual: false, provider: .parakeet)
+        ),
+        ParakeetModel(
+            name: "parakeet-tdt-0.6b-v3",
+            displayName: "Parakeet V3",
+            description: "NVIDIA's Parakeet V3 model with multilingual support across English and 25 European languages.",
+            size: "494 MB",
+            speed: 0.99,
+            accuracy: 0.94,
+            ramUsage: 0.8,
+            supportedLanguages: getLanguageDictionary(isMultilingual: true, provider: .parakeet)
         ),
         
          // Local Models
@@ -196,10 +206,20 @@ import Foundation
         CloudModel(
            name: "scribe_v1",
            displayName: "Scribe v1 (ElevenLabs)",
-           description: "ElevenLabs' Scribe model for fast and accurate transcription.",
+           description: "ElevenLabs' Scribe model for fast & accurate transcription.",
            provider: .elevenLabs,
            speed: 0.7,
            accuracy: 0.98,
+           isMultilingual: true,
+           supportedLanguages: getLanguageDictionary(isMultilingual: true, provider: .elevenLabs)
+       ),
+       CloudModel(
+           name: "scribe_v2",
+           displayName: "Scribe v2 (ElevenLabs)",
+           description: "ElevenLabs' Scribe v2 model for the most accurate transcription.",
+           provider: .elevenLabs,
+           speed: 0.75,
+           accuracy: 0.99,
            isMultilingual: true,
            supportedLanguages: getLanguageDictionary(isMultilingual: true, provider: .elevenLabs)
        ),
@@ -232,6 +252,39 @@ import Foundation
             accuracy: 0.97,
             isMultilingual: true,
             supportedLanguages: getLanguageDictionary(isMultilingual: true, provider: .mistral)
+        ),
+        
+        // Gemini Models
+        CloudModel(
+            name: "gemini-2.5-pro",
+            displayName: "Gemini 2.5 Pro",
+            description: "Google's advanced multimodal model with high-quality transcription capabilities.",
+            provider: .gemini,
+            speed: 0.7,
+            accuracy: 0.96,
+            isMultilingual: true,
+            supportedLanguages: getLanguageDictionary(isMultilingual: true, provider: .gemini)
+        ),
+        CloudModel(
+            name: "gemini-2.5-flash",
+            displayName: "Gemini 2.5 Flash",
+            description: "Google's optimized model for low-latency transcription with multimodal support.",
+            provider: .gemini,
+            speed: 0.9,
+            accuracy: 0.94,
+            isMultilingual: true,
+            supportedLanguages: getLanguageDictionary(isMultilingual: true, provider: .gemini)
+        )
+        ,
+        CloudModel(
+            name: "stt-async-v3",
+            displayName: "Soniox (stt-async-v3)",
+            description: "Soniox asynchronous transcription model v3.",
+            provider: .soniox,
+            speed: 0.8,
+            accuracy: 0.96,
+            isMultilingual: true,
+            supportedLanguages: getLanguageDictionary(isMultilingual: true, provider: .soniox)
         )
      ]
  

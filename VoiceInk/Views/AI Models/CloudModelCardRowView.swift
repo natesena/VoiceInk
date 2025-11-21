@@ -14,6 +14,7 @@ struct CloudModelCardView: View {
     @State private var isVerifying = false
     @State private var verificationStatus: VerificationStatus = .none
     @State private var isConfiguredState: Bool = false
+    @State private var verificationError: String? = nil
     
     enum VerificationStatus {
         case none, verifying, success, failure
@@ -36,6 +37,10 @@ struct CloudModelCardView: View {
             return "Deepgram"
         case .mistral:
             return "Mistral"
+        case .gemini:
+            return "Gemini"
+        case .soniox:
+            return "Soniox"
         default:
             return model.provider.rawValue
         }
@@ -244,9 +249,15 @@ struct CloudModelCardView: View {
             }
             
             if verificationStatus == .failure {
-                Text("Invalid API key. Please check your key and try again.")
-                    .font(.caption)
-                    .foregroundColor(Color(.systemRed))
+                if let error = verificationError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(Color(.systemRed))
+                } else {
+                    Text("Verification failed")
+                        .font(.caption)
+                        .foregroundColor(Color(.systemRed))
+                }
             } else if verificationStatus == .success {
                 Text("API key verified successfully!")
                     .font(.caption)
@@ -277,6 +288,10 @@ struct CloudModelCardView: View {
             aiService.selectedProvider = .deepgram
         case .mistral:
             aiService.selectedProvider = .mistral
+        case .gemini:
+            aiService.selectedProvider = .gemini
+        case .soniox:
+            aiService.selectedProvider = .soniox
         default:
             // This case should ideally not be hit for cloud models in this view
             print("Warning: verifyAPIKey called for unsupported provider \(model.provider.rawValue)")
@@ -285,11 +300,12 @@ struct CloudModelCardView: View {
             return
         }
         
-        aiService.saveAPIKey(apiKey) { isValid in
+        aiService.saveAPIKey(apiKey) { isValid, errorMessage in
             DispatchQueue.main.async {
                 self.isVerifying = false
                 if isValid {
                     self.verificationStatus = .success
+                    self.verificationError = nil
                     // Save the API key
                     UserDefaults.standard.set(self.apiKey, forKey: "\(self.providerKey)APIKey")
                     self.isConfiguredState = true
@@ -300,6 +316,7 @@ struct CloudModelCardView: View {
                     }
                 } else {
                     self.verificationStatus = .failure
+                    self.verificationError = errorMessage
                 }
                 
                 // Restore original provider
@@ -312,6 +329,7 @@ struct CloudModelCardView: View {
         UserDefaults.standard.removeObject(forKey: "\(providerKey)APIKey")
         apiKey = ""
         verificationStatus = .none
+        verificationError = nil
         isConfiguredState = false
         
         // If this model is currently the default, clear it

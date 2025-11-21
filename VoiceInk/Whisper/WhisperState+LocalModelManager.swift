@@ -2,6 +2,7 @@ import Foundation
 import os
 import Zip
 import SwiftUI
+import Atomics
 
 
 struct WhisperModel: Identifiable {
@@ -34,13 +35,17 @@ struct WhisperModel: Identifiable {
 
 private class TaskDelegate: NSObject, URLSessionTaskDelegate {
     private let continuation: CheckedContinuation<Void, Never>
-    
+    private let finished = ManagedAtomic(false)
+
     init(_ continuation: CheckedContinuation<Void, Never>) {
         self.continuation = continuation
     }
-    
+
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        continuation.resume()
+        // Ensure continuation is resumed only once, even if called multiple times
+        if finished.exchange(true, ordering: .acquiring) == false {
+            continuation.resume()
+        }
     }
 }
 
@@ -98,116 +103,98 @@ extension WhisperState {
     /// Helper function to download a file from a URL with progress tracking
     private func downloadFileWithProgress(from url: URL, progressKey: String) async throws -> Data {
         let destinationURL = modelsDirectory.appendingPathComponent(UUID().uuidString)
-        
+
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
+            // Guard to prevent double resume
+            let finished = ManagedAtomic(false)
+
+            func finishOnce(_ result: Result<Data, Error>) {
+                if finished.exchange(true, ordering: .acquiring) == false {
+                    continuation.resume(with: result)
+                }
+            }
+
             let task = URLSession.shared.downloadTask(with: url) { tempURL, response, error in
                 if let error = error {
-                    continuation.resume(throwing: error)
+                    finishOnce(.failure(error))
                     return
                 }
-                
+
                 guard let httpResponse = response as? HTTPURLResponse,
                       (200...299).contains(httpResponse.statusCode),
                       let tempURL = tempURL else {
-                    continuation.resume(throwing: URLError(.badServerResponse))
+                    finishOnce(.failure(URLError(.badServerResponse)))
                     return
                 }
-                
+
                 do {
                     // Move the downloaded file to the final destination
                     try FileManager.default.moveItem(at: tempURL, to: destinationURL)
-                    
+
                     // Read the file in chunks to avoid memory pressure
                     let data = try Data(contentsOf: destinationURL, options: .mappedIfSafe)
-                    continuation.resume(returning: data)
-                    
+                    finishOnce(.success(data))
+
                     // Clean up the temporary file
                     try? FileManager.default.removeItem(at: destinationURL)
                 } catch {
-                    continuation.resume(throwing: error)
+                    finishOnce(.failure(error))
                 }
             }
-            
+
             task.resume()
-            
+
             var lastUpdateTime = Date()
             var lastProgressValue: Double = 0
-            
+
             let observation = task.progress.observe(\.fractionCompleted) { progress, _ in
                 let currentTime = Date()
                 let timeSinceLastUpdate = currentTime.timeIntervalSince(lastUpdateTime)
                 let currentProgress = round(progress.fractionCompleted * 100) / 100
-                
+
                 if timeSinceLastUpdate >= 0.5 && abs(currentProgress - lastProgressValue) >= 0.01 {
                     lastUpdateTime = currentTime
                     lastProgressValue = currentProgress
-                    
+
                     DispatchQueue.main.async {
                         self.downloadProgress[progressKey] = currentProgress
                     }
                 }
             }
-            
+
             Task {
                 await withTaskCancellationHandler {
                     observation.invalidate()
+                    // Also ensure continuation is resumed with cancellation if task is cancelled
+                    if finished.exchange(true, ordering: .acquiring) == false {
+                        continuation.resume(throwing: CancellationError())
+                    }
                 } operation: {
                     await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
                 }
             }
         }
     }
-    
-    // Shows an alert about Core ML support and first-run optimization
-    private func showCoreMLAlert(for model: LocalModel, completion: @escaping () -> Void) {
-        Task { @MainActor in
-            let alert = NSAlert()
-            alert.messageText = "Core ML Support for \(model.displayName) Model"
-            alert.informativeText = "This Whisper model supports Core ML, which can improve performance by 2-4x on Apple Silicon devices.\n\nDuring the first run, it can take several minutes to optimize the model for your system. Subsequent runs will be much faster."
-            alert.alertStyle = .informational
-            alert.addButton(withTitle: "Download")
-            alert.addButton(withTitle: "Cancel")
-            
-            let response = alert.runModal()
-            if response == .alertFirstButtonReturn {
-                completion()
-            }
-        }
-    }
-    
     func downloadModel(_ model: LocalModel) async {
         guard let url = URL(string: model.downloadURL) else { return }
-        
-        // Check if model supports Core ML (non-quantized models)
-        let supportsCoreML = !model.name.contains("q5") && !model.name.contains("q8")
-        
-        if supportsCoreML {
-            // Show the CoreML alert for models that support it
-            await MainActor.run {
-                showCoreMLAlert(for: model) {
-                    // This completion handler is called when user clicks "Download"
-                    Task {
-                        await self.performModelDownload(model, url)
-                    }
-                }
-            }
-        } else {
-            // Directly download the model if it doesn't support Core ML
-            await performModelDownload(model, url)
-        }
+        await performModelDownload(model, url)
     }
     
     private func performModelDownload(_ model: LocalModel, _ url: URL) async {
         do {
-            let whisperModel = try await downloadMainModel(model, from: url)
+            var whisperModel = try await downloadMainModel(model, from: url)
             
             if let coreMLZipURL = whisperModel.coreMLZipDownloadURL,
                let coreMLURL = URL(string: coreMLZipURL) {
-                try await downloadAndSetupCoreMLModel(for: whisperModel, from: coreMLURL)
+                whisperModel = try await downloadAndSetupCoreMLModel(for: whisperModel, from: coreMLURL)
             }
             
             availableModels.append(whisperModel)
             self.downloadProgress.removeValue(forKey: model.name + "_main")
+
+            if shouldWarmup(model) {
+                WhisperModelWarmupCoordinator.shared.scheduleWarmup(for: model, whisperState: self)
+            }
         } catch {
             handleModelDownloadError(model, error)
         }
@@ -223,32 +210,40 @@ extension WhisperState {
         return WhisperModel(name: model.name, url: destinationURL)
     }
     
-    private func downloadAndSetupCoreMLModel(for model: WhisperModel, from url: URL) async throws {
+    private func downloadAndSetupCoreMLModel(for model: WhisperModel, from url: URL) async throws -> WhisperModel {
         let progressKeyCoreML = model.name + "_coreml"
         let coreMLData = try await downloadFileWithProgress(from: url, progressKey: progressKeyCoreML)
         
         let coreMLZipPath = modelsDirectory.appendingPathComponent("\(model.name)-encoder.mlmodelc.zip")
         try coreMLData.write(to: coreMLZipPath)
         
-        try await unzipAndSetupCoreMLModel(for: model, zipPath: coreMLZipPath, progressKey: progressKeyCoreML)
+        return try await unzipAndSetupCoreMLModel(for: model, zipPath: coreMLZipPath, progressKey: progressKeyCoreML)
     }
     
-    private func unzipAndSetupCoreMLModel(for model: WhisperModel, zipPath: URL, progressKey: String) async throws {
+    private func unzipAndSetupCoreMLModel(for model: WhisperModel, zipPath: URL, progressKey: String) async throws -> WhisperModel {
         let coreMLDestination = modelsDirectory.appendingPathComponent("\(model.name)-encoder.mlmodelc")
         
         try? FileManager.default.removeItem(at: coreMLDestination)
         try await unzipCoreMLFile(zipPath, to: modelsDirectory)
-        try verifyAndCleanupCoreMLFiles(model, coreMLDestination, zipPath, progressKey)
+        return try verifyAndCleanupCoreMLFiles(model, coreMLDestination, zipPath, progressKey)
     }
     
     private func unzipCoreMLFile(_ zipPath: URL, to destination: URL) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        let finished = ManagedAtomic(false)
+
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            func finishOnce(_ result: Result<Void, Error>) {
+                if finished.exchange(true, ordering: .acquiring) == false {
+                    continuation.resume(with: result)
+                }
+            }
+
             do {
                 try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
                 try Zip.unzipFile(zipPath, destination: destination, overwrite: true, password: nil)
-                continuation.resume()
+                finishOnce(.success(()))
             } catch {
-                continuation.resume(throwing: error)
+                finishOnce(.failure(error))
             }
         }
     }
@@ -267,6 +262,10 @@ extension WhisperState {
         self.downloadProgress.removeValue(forKey: progressKey)
         
         return model
+    }
+
+    private func shouldWarmup(_ model: LocalModel) -> Bool {
+        !model.name.contains("q5") && !model.name.contains("q8")
     }
     
     private func handleModelDownloadError(_ model: LocalModel, _ error: Error) {
@@ -341,6 +340,8 @@ extension WhisperState {
         await whisperContext?.releaseResources()
         whisperContext = nil
         isModelLoaded = false
+
+        parakeetTranscriptionService.cleanup()
     }
     
     // MARK: - Helper Methods
