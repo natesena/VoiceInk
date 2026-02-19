@@ -127,7 +127,7 @@ actor WhisperContext {
         params.use_gpu = false
         logger.info("Running on the simulator, using CPU")
         #else
-        params.flash_attn = true // Enable flash attention for Metal
+        params.flash_attn = true
         logger.info("Flash attention enabled for Metal")
         #endif
         
