@@ -91,6 +91,7 @@ archive: setup
 		-scheme VoiceInk \
 		-configuration Release \
 		-archivePath $(ARCHIVE_PATH) \
+		-allowProvisioningUpdates \
 		archive
 	@echo "Archive created at $(ARCHIVE_PATH)"
 
@@ -105,7 +106,8 @@ export:
 	xcodebuild -exportArchive \
 		-archivePath $(ARCHIVE_PATH) \
 		-exportPath $(EXPORT_PATH) \
-		-exportOptionsPlist ExportOptions.plist
+		-exportOptionsPlist ExportOptions.plist \
+		-allowProvisioningUpdates
 	@echo "App exported to $(EXPORT_PATH)"
 
 # Create DMG for distribution
